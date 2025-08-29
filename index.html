@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Now</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .weather-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .input-focus:focus {
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+        }
+        .loading {
+            animation: pulse 2s infinite;
+        }
+        .weather-icon {
+            font-size: 4rem;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="min-h-screen bg-gradient-to-br from-blue-400 via-purple-500 to-pink-500 flex items-center justify-center p-4">
+        <div class="bg-white/10 backdrop-blur-lg rounded-3xl p-8 w-full max-w-md shadow-2xl">
+            <h1 class="text-4xl font-bold text-white text-center mb-8 flex items-center justify-center gap-2">
+                <span class="weather-icon">🌤️</span>
+                Weather Now
+            </h1>
+            
+            <div class="space-y-4">
+                <div class="flex gap-2">
+                    <input 
+                        type="text" 
+                        id="cityInput"
+                        placeholder="Enter city name..."
+                        class="flex-1 p-3 rounded-xl border-0 bg-white/20 text-white placeholder-white/70 input-focus outline-none"
+                    />
+                    <button 
+                        id="searchBtn"
+                        class="bg-white/20 hover:bg-white/30 text-white px-6 py-3 rounded-xl transition-all duration-200 font-semibold"
+                    >
+                        Search
+                    </button>
+                </div>
+                
+                <div id="error" class="hidden bg-red-500/20 border border-red-500/50 text-white p-3 rounded-xl"></div>
+                
+                <div id="loading" class="hidden text-center text-white">
+                    <div class="loading bg-white/20 rounded-xl p-4">
+                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto"></div>
+                        <p class="mt-2">Loading weather...</p>
+                    </div>
+                </div>
+                
+                <div id="weatherResult" class="hidden fade-in"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const cityInput = document.getElementById('cityInput');
+        const searchBtn = document.getElementById('searchBtn');
+        const errorDiv = document.getElementById('error');
+        const loadingDiv = document.getElementById('loading');
+        const resultDiv = document.getElementById('weatherResult');
+
+        function showError(message) {
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+            loadingDiv.classList.add('hidden');
+            resultDiv.classList.add('hidden');
+        }
+
+        function showLoading() {
+            loadingDiv.classList.remove('hidden');
+            errorDiv.classList.add('hidden');
+            resultDiv.classList.add('hidden');
+        }
+
+        function getWeatherIcon(code) {
+            const icons = {
+                0: '☀️', // Clear sky
+                1: '🌤️', // Mainly clear
+                2: '⛅', // Partly cloudy
+                3: '☁️', // Overcast
+                45: '🌫️', // Fog
+                48: '🌫️', // Depositing rime fog
+                51: '🌦️', // Light drizzle
+                53: '🌦️', // Moderate drizzle
+                55: '🌦️', // Dense drizzle
+                61: '🌧️', // Slight rain
+                63: '🌧️', // Moderate rain
+                65: '🌧️', // Heavy rain
+                71: '🌨️', // Slight snow
+                73: '🌨️', // Moderate snow
+                75: '🌨️', // Heavy snow
+                95: '⛈️', // Thunderstorm
+                96: '⛈️', // Thunderstorm with hail
+                99: '⛈️'  // Thunderstorm with heavy hail
+            };
+            return icons[code] || '🌤️';
+        }
+
+        function getWeatherDescription(code) {
+            const descriptions = {
+                0: 'Clear sky',
+                1: 'Mainly clear',
+                2: 'Partly cloudy',
+                3: 'Overcast',
+                45: 'Foggy',
+                48: 'Depositing rime fog',
+                51: 'Light drizzle',
+                53: 'Moderate drizzle',
+                55: 'Dense drizzle',
+                61: 'Slight rain',
+                63: 'Moderate rain',
+                65: 'Heavy rain',
+                71: 'Slight snow fall',
+                73: 'Moderate snow fall',
+                75: 'Heavy snow fall',
+                95: 'Thunderstorm',
+                96: 'Thunderstorm with hail',
+                99: 'Thunderstorm with heavy hail'
+            };
+            return descriptions[code] || 'Unknown conditions';
+        }
+
+        async function fetchWeather() {
+            const city = cityInput.value.trim();
+            if (!city) {
+                showError('Please enter a city name');
+                return;
+            }
+
+            showLoading();
+
+            try {
+                // First, get coordinates for the city
+                const geoResponse = await fetch(
+                    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`
+                );
+                
+                if (!geoResponse.ok) {
+                    throw new Error('Failed to find city');
+                }
+
+                const geoData = await geoResponse.json();
+                
+                if (!geoData.results || geoData.results.length === 0) {
+                    showError('City not found. Please try a different city name.');
+                    return;
+                }
+
+                const location = geoData.results[0];
+                const { latitude, longitude, name, country } = location;
+
+                // Get weather data
+                const weatherResponse = await fetch(
+                    `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m&timezone=auto`
+                );
+
+                if (!weatherResponse.ok) {
+                    throw new Error('Failed to fetch weather data');
+                }
+
+                const weatherData = await weatherResponse.json();
+                const current = weatherData.current_weather;
+
+                // Display weather
+                resultDiv.innerHTML = `
+                    <div class="bg-white/20 backdrop-blur-lg rounded-2xl p-6 text-white text-center fade-in">
+                        <div class="text-6xl mb-4">${getWeatherIcon(current.weathercode)}</div>
+                        <h2 class="text-2xl font-bold mb-2">${name}, ${country}</h2>
+                        <div class="text-5xl font-bold mb-2">${Math.round(current.temperature)}°C</div>
+                        <p class="text-lg mb-4">${getWeatherDescription(current.weathercode)}</p>
+                        <div class="flex justify-center gap-6 text-sm">
+                            <div class="flex flex-col items-center">
+                                <span class="text-white/70">Wind Speed</span>
+                                <span class="font-semibold">${Math.round(current.windspeed)} km/h</span>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <span class="text-white/70">Wind Direction</span>
+                                <span class="font-semibold">${Math.round(current.winddirection)}°</span>
+                            </div>
+                        </div>
+                        <div class="mt-4 text-xs text-white/60">
+                            Last updated: ${new Date().toLocaleTimeString()}
+                        </div>
+                    </div>
+                `;
+                
+                loadingDiv.classList.add('hidden');
+                errorDiv.classList.add('hidden');
+                resultDiv.classList.remove('hidden');
+
+            } catch (error) {
+                console.error('Weather fetch error:', error);
+                showError('Unable to fetch weather data. Please try again.');
+            }
+        }
+
+        // Event listeners
+        searchBtn.addEventListener('click', fetchWeather);
+        
+        cityInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                fetchWeather();
+            }
+        });
+
+        // Auto-focus input
+        cityInput.focus();
+    </script>
+</body>
+</html>
